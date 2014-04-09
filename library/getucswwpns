@@ -1,0 +1,144 @@
+#!/usr/bin/env python2.7
+
+DOCUMENTATION = '''
+---
+module: getucswwpns
+version_added: 0.1.5
+short_description: UCS WWPN retriever
+description:
+   - An ansible module
+author: Matt Oswalt
+'''
+
+import logging
+from os.path import isfile
+import sys
+import time
+import json
+import select
+from UcsSdk import *
+
+EXAMPLES = '''
+TBD
+'''
+
+#TODO: Make sure you're reporting errors the ansible way (i.e. module.fail_json)
+
+import os
+
+def getucswwpns(module):
+  args = module.params
+
+  results = {}
+  
+  #Pull config file from configfile parameter
+  outputfile = module.params['outputfile']
+  #Force this file to use absolute path
+  outputfile = os.path.abspath(outputfile)
+
+  results['outputfile'] = outputfile
+  #results['changed'] = False
+
+  try:
+
+    logging.info("connecting to UCS")
+
+    handle = UcsHandle()  
+    #handle.Login(module.params['host'], username=module.params['ucs_user'], password=module.params['ucs_pass'])
+    handle.Login(module.params['host'], username='config', password='config')
+    vHBADict = {}
+    FabADict = {}
+    FabBDict = {}
+
+    #TODO: Statically defining sub-organization for now, will make more dynamic later
+
+    #Need to make a generic function (probably place in central "general functions" file that finds an org at any nest level, and retrieves ful DN for things like what you're doing below. Allows for org filtering at any level
+    ucsOrg = "org-ORG_TEST"
+
+    f = open(outputfile,'w')
+
+    obj = handle.GetManagedObject(None, None, {"Dn":"org-root/" + ucsOrg + "/"})
+    moArr = handle.GetManagedObject(obj, "vnicFc")
+    for mo in moArr:
+      #Pull only actual vHBAs (not templates) and on the desired fabric (A/B)
+      if str(mo.Addr) != 'derived' and mo.SwitchId == 'A':
+
+        #We're retrieving Dn here so we can include the service profile in the name
+        origDn = str(mo.Dn)
+        
+        #Need to do a little string surgery to transform the Dn of the vHBA into a proper zone name.
+        origDn = origDn.replace('org-root/org-ORG_TEST/','')
+        origDn = origDn.replace('/','_')
+        origDn = origDn.replace('ls-','')
+        origDn = origDn.replace('fc-','')
+
+        #using the WWPN address as key since more likely to be unique
+        FabADict[mo.Addr] = origDn
+
+      elif str(mo.Addr) != 'derived' and mo.SwitchId == 'B':
+
+        #We're retrieving Dn here so we can include the service profile in the name
+        origDn = str(mo.Dn)
+        
+        #Need to do a little string surgery to transform the Dn of the vHBA into a proper zone name.
+        origDn = origDn.replace('org-root/org-ORG_TEST/','')
+        origDn = origDn.replace('/','_')
+        origDn = origDn.replace('ls-','')
+        origDn = origDn.replace('fc-','')
+
+        #using the WWPN address as key since more likely to be unique
+        FabBDict[mo.Addr] = origDn
+
+    vHBADict['FabA'] = FabADict
+    vHBADict['FabB'] = FabBDict
+    
+    json.dump(vHBADict, f, sort_keys=True)
+
+    f.close()
+
+  except Exception as err:
+    results['failed'] = True
+    msg = "Unable to make changes"
+    results['msg'] = msg
+    logging.info('Error on {}'.format(args['host']))
+    logging.error(msg)
+    module.fail_json(msg='error on {}'.format(args['host']))
+
+  return results
+
+### ---------------------------------------------------------------------------
+### MAIN
+### ---------------------------------------------------------------------------
+
+def main():
+  module = AnsibleModule(
+    argument_spec = dict(
+      host=dict(required=True),
+      ucs_user=dict(required=True),
+      ucs_pass=dict(required=True),
+      outputfile=dict(required=True),
+      override=dict(required=False, default=False),
+      logfile=dict(required=False, default=None),
+      timeout=dict(required=False, default=0)
+    ),
+    supports_check_mode = False
+    #Need to look into supporting check mode, though I'm not sure what the point is with this specific module. Check the module building docs and conform to the standard
+  )
+
+  args = module.params
+
+  logfile = module.params.get('logfile')
+  if logfile is not None:
+    logging.basicConfig(filename=logfile, level=logging.INFO,
+      format='%(asctime)s:%(name)s:%(message)s')
+    logging.getLogger().name = 'CONFIG:'+module.params['host']  
+
+  #logging.info("connecting to host: {}@{}".format(args['user'], args['host']))
+  logging.info("Beginning config pull on host: {}".format(args['host']))
+  results = getucswwpns(module)
+
+  module.exit_json(**results)
+
+from ansible.module_utils.basic import *
+main()
+

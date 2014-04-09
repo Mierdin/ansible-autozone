@@ -1,0 +1,13 @@
+---
+- name: Get UCS Information
+  hosts: all
+  connection: local
+  gather_facts: no
+
+  tasks:
+    - getucswwpns:
+        host={{ inventory_hostname }}
+        ucs_user="config"
+        ucs_pass="config"
+        outputfile="/Users/Mierdin/Dropbox/output.txt"
+        logfile="/Users/Mierdin/Dropbox/log.txt"
