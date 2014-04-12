@@ -1,0 +1,12 @@
+#This is a sample hosts file that will make use of the arguments for these two modules
+
+[nexus3k]
+nexus3k-a.mierdin.local
+nexus3k-b.mierdin.local
+
+[ucs]
+ucspe.mierdin.local
+
+[nexus5k]
+10.2.1.54 fabricid=a vsanid=10
+10.2.1.54 fabricid=b vsanid=20

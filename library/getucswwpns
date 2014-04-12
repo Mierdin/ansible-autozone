@@ -3,10 +3,10 @@
 DOCUMENTATION = '''
 ---
 module: getucswwpns
-version_added: 0.1.5
+version_added: 0.1
 short_description: UCS WWPN retriever
 description:
-   - An ansible module
+   - Retrieves all vHBAs/WWPNs from a given UCS system, and exports them as a dictionary/JSON file for other modules to pick up and consume
 author: Matt Oswalt
 '''
 
@@ -27,36 +27,42 @@ TBD
 import os
 
 def getucswwpns(module):
-  args = module.params
+
+  #NOTICE - I am developing much of this functionality in a separate module dedicated to making the UCS Python SDK easier to use. It is likely
+  #that any Ansible modules I create that do stuff with UCS (including this one) will in the future make use of this library instead of directly consuming UCS here.
 
   results = {}
   
-  #Pull config file from configfile parameter
   outputfile = module.params['outputfile']
-  #Force this file to use absolute path
   outputfile = os.path.abspath(outputfile)
 
   results['outputfile'] = outputfile
-  #results['changed'] = False
+  
+  #This module is not built to make changes, so we are returning false here.
+  results['changed'] = False
 
   try:
 
-    logging.info("connecting to UCS")
+    logging.info("Connecting to UCSM at " + module.params['host'])
 
+    #Connect to UCSM
     handle = UcsHandle()  
-    #handle.Login(module.params['host'], username=module.params['ucs_user'], password=module.params['ucs_pass'])
-    handle.Login(module.params['host'], username='config', password='config')
+    handle.Login(module.params['host'], username=module.params['ucs_user'], password=module.params['ucs_pass'])
+
+    #Instantiate the dictionaries that will hold our WWPNs
     vHBADict = {}
     FabADict = {}
     FabBDict = {}
 
     #TODO: Statically defining sub-organization for now, will make more dynamic later
 
-    #Need to make a generic function (probably place in central "general functions" file that finds an org at any nest level, and retrieves ful DN for things like what you're doing below. Allows for org filtering at any level
+    #Need to make a generic function (probably place in central "general functions" file that finds an org at any nest level, 
+    #and retrieves ful DN for things like what you're doing below. Allows for org filtering at any level
     ucsOrg = "org-ORG_TEST"
 
     f = open(outputfile,'w')
 
+    #TODO: For some reason, if the specified org does not exist, this still returns all orgs, rather than erroring out or providing a null value. Need to handle this better
     obj = handle.GetManagedObject(None, None, {"Dn":"org-root/" + ucsOrg + "/"})
     moArr = handle.GetManagedObject(obj, "vnicFc")
     for mo in moArr:
@@ -67,10 +73,12 @@ def getucswwpns(module):
         origDn = str(mo.Dn)
         
         #Need to do a little string surgery to transform the Dn of the vHBA into a proper zone name.
-        origDn = origDn.replace('org-root/org-ORG_TEST/','')
+        origDn = origDn.replace('org-root/' + ucsOrg + '/','')
         origDn = origDn.replace('/','_')
         origDn = origDn.replace('ls-','')
         origDn = origDn.replace('fc-','')
+
+        logging.info('Retrived ' + origDn + ' with address ' + mo.Addr)
 
         #using the WWPN address as key since more likely to be unique
         FabADict[mo.Addr] = origDn
@@ -81,28 +89,35 @@ def getucswwpns(module):
         origDn = str(mo.Dn)
         
         #Need to do a little string surgery to transform the Dn of the vHBA into a proper zone name.
-        origDn = origDn.replace('org-root/org-ORG_TEST/','')
+        origDn = origDn.replace('org-root/' + ucsOrg + '/','')
         origDn = origDn.replace('/','_')
         origDn = origDn.replace('ls-','')
         origDn = origDn.replace('fc-','')
 
+        logging.info('Retrived ' + origDn + ' with address ' + mo.Addr)
+
         #using the WWPN address as key since more likely to be unique
         FabBDict[mo.Addr] = origDn
 
-    vHBADict['FabA'] = FabADict
-    vHBADict['FabB'] = FabBDict
+    #Populate primary dictionary
+    vHBADict['a'] = FabADict
+    vHBADict['b'] = FabBDict
     
     json.dump(vHBADict, f, sort_keys=True)
 
+    #Clean-up
     f.close()
+    handle.Logout()
 
-  except Exception as err:
+    logging.info('WWPNs retrieved, JSON file created.')
+
+  except Exception, err:
     results['failed'] = True
-    msg = "Unable to make changes"
+    msg = "Unable to retrieve info"
     results['msg'] = msg
-    logging.info('Error on {}'.format(args['host']))
-    logging.error(msg)
-    module.fail_json(msg='error on {}'.format(args['host']))
+    logging.info('Error aon {}'.format(module.params['host']))
+    logging.info(err)
+    module.fail_json(msg='error on {}'.format(module.params['host']))
 
   return results
 
@@ -122,10 +137,7 @@ def main():
       timeout=dict(required=False, default=0)
     ),
     supports_check_mode = False
-    #Need to look into supporting check mode, though I'm not sure what the point is with this specific module. Check the module building docs and conform to the standard
   )
-
-  args = module.params
 
   logfile = module.params.get('logfile')
   if logfile is not None:
@@ -133,8 +145,7 @@ def main():
       format='%(asctime)s:%(name)s:%(message)s')
     logging.getLogger().name = 'CONFIG:'+module.params['host']  
 
-  #logging.info("connecting to host: {}@{}".format(args['user'], args['host']))
-  logging.info("Beginning config pull on host: {}".format(args['host']))
+  logging.info("About to retrieve storage configurations from host: {}".format(module.params['host']))
   results = getucswwpns(module)
 
   module.exit_json(**results)

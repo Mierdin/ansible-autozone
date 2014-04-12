@@ -1,0 +1,159 @@
+#!/usr/bin/env python2.7
+
+DOCUMENTATION = '''
+---
+module: installconfig
+version_added: 0.1
+short_description: NX-OS configuration installer (strict SSH)
+description:
+   - This module is built as an example for pulling Cisco UCS WWPNs from a JSON file created by the 'getucsinfo' module. 
+     There will be another module created later for more long-term usage in pushing configurations to a Cisco device.
+author: Matt Oswalt
+'''
+
+import logging
+from os.path import isfile
+import paramiko
+import os
+import sys
+import time
+import select
+from jinja2 import Template, Environment, FileSystemLoader
+
+EXAMPLES = '''
+TBD
+'''
+
+def getTargets():
+  #This is a quick and easy way to insert target WWPNs into the template. I am planning on building in functionality similar to what I'm doing with UCS.
+  targets = {}
+  targets['50:00:00:00:00:11:a0:01'] = 'Netapp-01-0a' 
+  targets['50:00:00:00:00:11:a0:02'] = 'Netapp-01-0b'
+  return targets
+
+def jinja_config(vHBADict, fabric_id, vsan_id):
+  env = Environment(loader=FileSystemLoader('../templates'))
+  template = env.get_template('fctemplate')
+ 
+  return template.render(initDict=vHBADict[fabric_id], targetDict=getTargets(), vsan=vsan_id)
+
+def nxos_install_rawconfig(module):
+
+  results = {}
+  
+  #Pull config file from configfile parameter
+  inputfile = module.params['inputfile']
+  inputfile = os.path.abspath(inputfile)
+
+  host = module.params['host']
+  vsan_id = module.params['vsan_id']
+  fabric_id = module.params['fabric_id']
+
+  results['configfile'] = inputfile
+
+  json_data = open(inputfile)
+  vHBADict = json.load(json_data)
+
+  #Generate configuration snippet based off of the parameters given, using the jinja template specified
+  config_snippet = jinja_config(vHBADict, fabric_id, vsan_id)
+
+  try:
+    logging.info("Connecting to " + module.params['host'])
+
+    i = 1
+    while True:
+        logging.info("Trying to connect to %s (%i/3)" % (host, i))
+
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(host, username=module.params['n5k_user'], password=module.params['n5k_pass'])
+            chan = ssh.invoke_shell()
+            logging.info("Connected to %s" % host)
+            #Connection successful, break out of the loop
+            break
+        except paramiko.AuthenticationException:
+            logging.info("Authentication failed when connecting to %s" % host)
+            module.fail_json(msg='unable to connect to {}'.format(module.params['host']))
+        except:
+            logging.info("Could not SSH to %s, waiting for it to start" % host)
+            module.fail_json(msg='unable to connect to {}'.format(module.params['host']))
+            i += 1
+            time.sleep(2)
+
+        # If we could not connect within time limit
+        if i == 3:
+            logging.info(")Could not connect to %s. Giving up" %st)
+            module.fail_json(msg='unable to connect to {}'.format(module.params['host']))
+
+    try:
+      logging.info("pushing configuration")
+
+      chan.send('conf t' + '\n')
+      chan.recv(9999)
+      for line in iter(config_snippet.splitlines()):
+        logging.info(" -- CONFIGOUT -- " + line)
+        chan.send(line + '\n')
+        time.sleep(1)
+        resp = chan.recv(9999)
+        logging.info(" -- RESPONSE -- " + resp)
+
+    except Exception as err:
+      if err.rsp.find('.//ok') is None:
+        rpc_msg = err.rsp.findtext('.//error-message')
+        logging.error("unable to load config:{}".format(rpc_msg))
+        raise err
+      else:
+        pass
+      
+    logging.info("change completed, disconnecting from host")    
+    ssh.close()
+
+  except Exception as err:
+    raise err
+    results['failed'] = True
+    msg = "Unable to make changes"
+    results['msg'] = msg
+    logging.error('Error details: '  + err)
+    module.fail_json(msg='error on {}'.format(module.params['host']))
+
+  #In the current state of this module, we're either making changes, or we're erroring out. So I'm statically setting this to True.
+  #When I move to a more granular model (i.e. using netconf) this this will get a little more complicated.
+  results['changed'] = True
+
+  return results
+
+### ---------------------------------------------------------------------------
+### MAIN
+### ---------------------------------------------------------------------------
+
+def main():
+  module = AnsibleModule(
+    argument_spec = dict(
+      host=dict(required=True),
+      n5k_user=dict(required=True),
+      n5k_pass=dict(required=True),
+      fabric_id=dict(required=True),
+      vsan_id=dict(required=True),
+      inputfile=dict(required=True),
+      override=dict(required=False, default=False),
+      logfile=dict(required=False, default=None),
+      timeout=dict(required=False, default=0)
+    ),
+    supports_check_mode = False
+  )
+
+  logfile = module.params.get('logfile')
+  if logfile is not None:
+    logging.basicConfig(filename=logfile, level=logging.INFO,
+      format='%(asctime)s:%(name)s:%(message)s')
+    logging.getLogger().name = 'CONFIG:'+ module.params['host']  
+
+  logging.info("About to push configuration to host: {}".format(module.params['host']))
+  results = nxos_install_rawconfig(module)
+
+  module.exit_json(**results)
+
+from ansible.module_utils.basic import *
+main()
+

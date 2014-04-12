@@ -1,4 +1,0 @@
-vsan database
-{% for key, value in vsanDict.iteritems() -%}
-  vsan {{ key }} name {{ value }}
-{% endfor %} 

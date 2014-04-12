@@ -1,0 +1,30 @@
+---
+- name: Get Existing UCS Information
+  hosts: ucs
+  connection: local
+  gather_facts: no
+
+  tasks: 
+    - name: Pull WWPNs from UCS
+      getucswwpns:
+        host={{ inventory_hostname }}
+        ucs_user="config"
+        ucs_pass="config"
+        outputfile=output.txt
+        logfile=log.txt
+
+- name: Perform SAN Configuration
+  hosts: nexus5k
+  connection: local
+  gather_facts: no
+
+  tasks:
+    - name: Push configuration to Nexus switches via SSH
+      installconfig: 
+        host={{ inventory_hostname }}
+        n5k_user="admin"
+        n5k_pass="Cisco.com"
+        fabric_id={{ fabricid }}
+        vsan_id={{ vsanid }}
+        inputfile=output.txt
+        logfile=log.txt
