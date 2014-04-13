@@ -52,8 +52,6 @@ def nxos_install_rawconfig(module):
   results['configfile'] = inputfile
 
   targets = module.params['fc_targets'].split(",")
-  for target in targets:
-    logging.info("--asdfoa---" + target)
 
   json_data = open(inputfile)
   vHBADict = json.load(json_data)
