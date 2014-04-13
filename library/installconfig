@@ -97,10 +97,10 @@ def nxos_install_rawconfig(module):
       chan.recv(9999)
       for line in iter(config_snippet.splitlines()):
         logging.info(" -- CONFIGOUT -- " + line)
-        #chan.send(line + '\n')
-        #time.sleep(1)
-        #resp = chan.recv(9999)
-        #logging.info(" -- RESPONSE -- " + resp)
+        chan.send(line + '\n')
+        time.sleep(1)
+        resp = chan.recv(9999)
+        logging.info(" -- RESPONSE -- " + resp)
 
     except Exception as err:
       if err.rsp.find('.//ok') is None:
