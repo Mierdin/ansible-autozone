@@ -26,5 +26,6 @@
         n5k_pass="Cisco.com"
         fabric_id={{ fabricid }}
         vsan_id={{ vsanid }}
+        fc_targets={{ targets }}
         inputfile=output.txt
         logfile=log.txt

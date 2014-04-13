@@ -1,12 +1,8 @@
 #This is a sample hosts file that will make use of the arguments for these two modules
 
-[nexus3k]
-nexus3k-a.mierdin.local
-nexus3k-b.mierdin.local
-
 [ucs]
-ucspe.mierdin.local
+10.12.0.78
 
 [nexus5k]
-10.2.1.54 fabricid=a vsanid=10
-10.2.1.54 fabricid=b vsanid=20
+10.2.1.54 fabricid=a vsanid=10 targets="50:00:00:00:00:11:a0:01","50:00:00:00:00:11:a0:02"
+10.2.1.55 fabricid=b vsanid=20 targets="50:00:00:00:00:11:b0:01","50:00:00:00:00:11:b0:02"

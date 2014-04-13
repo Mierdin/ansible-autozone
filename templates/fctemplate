@@ -2,21 +2,17 @@ device-alias database
 {% for wwpn, name in initDict|dictsort  -%}
   device-alias name {{ name }} pwwn {{ wwpn }}
 {% endfor %}
-{%- for wwpn, name in targetDict|dictsort  -%}
-  device-alias name {{ name }} pwwn {{ wwpn }}
-{% endfor %}
 device-alias commit
 
 vsan database
 vsan {{ vsan }} name VSAN_{{ vsan }}
-
 
 !ZONING CONFIG
 {# TODO: Need to allow vsan ID to be dynamic as well #}
 {% for wwpn, name in initDict|dictsort %}
 zone name {{ name }}_TO_NETAPP vsan {{ vsan }}
   member pwwn {{ wwpn }}
-  {% for wwpn, name in targetDict|dictsort  -%}
+  {% for wwpn in targets  -%}
     member pwwn {{ wwpn }}
   {% endfor %}
 {% endfor %}
