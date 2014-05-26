@@ -1,3 +1,11 @@
+WARNING
+================
+This repository was built for demo purposes only, and therefore is no longer being actively developed.
+
+For more on ansible and UCS, look [here](https://github.com/Mierdin/ansible-ucstools)
+
+
+
 ansible-autozone
 ================
 
